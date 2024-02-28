@@ -99,6 +99,10 @@ void overwriteEAT(DWORD base, PDWORD offset, DWORD pointer) {
 LPCSTR module_name = "user32.dll";
 LPCSTR function_name = "MessageBoxW";
 
+HMODULE h_module = NULL;
+DWORD base = 0;
+PDWORD offset_address = nullptr;
+
 BOOL APIENTRY DllMain( HMODULE hModule, DWORD  ul_reason_for_call, LPVOID lpReserved)
 {
 	switch (ul_reason_for_call)
@@ -110,7 +114,7 @@ BOOL APIENTRY DllMain( HMODULE hModule, DWORD  ul_reason_for_call, LPVOID lpRese
 		}
 
 		// module handle == base address of the module
-		HMODULE h_module = GetModuleHandleA(module_name);
+		h_module = GetModuleHandleA(module_name);
 		if (h_module == NULL) {
 			fprintf(console.stream, "Unable to get handle for module %s \n", module_name);
 			return TRUE;
@@ -119,7 +123,7 @@ BOOL APIENTRY DllMain( HMODULE hModule, DWORD  ul_reason_for_call, LPVOID lpRese
 
 		// module handle == base address of the module
 		// but we need to cast it to do correct pointer arithmetic
-		DWORD base = (DWORD)h_module;
+		base = (DWORD)h_module;
 
 		PIMAGE_EXPORT_DIRECTORY p_export_dir = get_export_directory(base);
 		fprintf(console.stream, "Found address %p for Export Directory Table of module %s\n", p_export_dir, module_name);
@@ -133,7 +137,7 @@ BOOL APIENTRY DllMain( HMODULE hModule, DWORD  ul_reason_for_call, LPVOID lpRese
 
 
 
-		PDWORD offset_address = get_export_offset_address(base, p_export_dir, index);
+		offset_address = get_export_offset_address(base, p_export_dir, index);
 		fprintf(console.stream, "Found address %d of exported function %s in the Export Address Table\n", base+*offset_address, function_name);// EAT contains an offset from the base
 		fprintf(console.stream, "True function is located at address %p\n", trueMessageBox);		
 
@@ -146,29 +150,37 @@ BOOL APIENTRY DllMain( HMODULE hModule, DWORD  ul_reason_for_call, LPVOID lpRese
 		fprintf(console.stream, "Hook function is located at address %p\n", &MessageBoxHook);
 		fprintf(console.stream, "GetProcAddress found address %p for function %s\n", address, function_name);
 		
+		// EAT will only affect modules loaded after the redirection has been made.
+		// Using the 
 
 		if (address != nullptr) {
 			// use the address to open a messagebox to prove it points to our hook
-			TrueMessageBox hookedMessageBox2 = reinterpret_cast<TrueMessageBox>(address);
-			hookedMessageBox2(NULL, L"EAT hook test", L"EAT hook test", MB_OK);
+			TrueMessageBox messageBox = reinterpret_cast<TrueMessageBox>(address);
+			messageBox(NULL, L"EAT hook test", L"EAT hook test", MB_OK);
 
 		}
 
-		//Loadlibrary again to affect program that doesnt use GetProcAddress?
-		// EAT will only affect modules loaded after the redirection	has been made.
-
 		return TRUE;
 	}
+						   
 
-	case DLL_THREAD_ATTACH: {}
-	case DLL_THREAD_DETACH: {}
+	case DLL_THREAD_ATTACH: break;
+	case DLL_THREAD_DETACH: break;
 	case DLL_PROCESS_DETACH: {
-		// todo: overwrite the address with the original address 
-		//overwriteEAT(base, offset_address, (DWORD)trueMessageBox);
+		// overwrite the address with the original address (unhook)
+		overwriteEAT(base, offset_address, (DWORD)trueMessageBox-base); 
+		FARPROC address = GetProcAddress(h_module, function_name);
+		fprintf(console.stream, "Hook function is located at address %p\n", &MessageBoxHook);
+		fprintf(console.stream, "GetProcAddress found address %p for function %s\n", address, function_name);
 
-		// todo: test that install was successfull by using GetProcAddress
-		// call test
+		if (address != nullptr) {
+			// use the address to open a messagebox to prove it points to our hook
+			TrueMessageBox messageBox = reinterpret_cast<TrueMessageBox>(address);
+			messageBox(NULL, L"EAT hook test", L"EAT hook test", MB_OK);
+
+		}
 		return TRUE;
 	}
+
 	}
 }
