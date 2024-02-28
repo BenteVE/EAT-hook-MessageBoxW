@@ -11,15 +11,19 @@
 #include <iostream>
 #include <Windows.h>
 #include <winternl.h>
+#include "Console.h"
 
-typedef int(WINAPI* TrueMessageBox)(HWND, LPCWSTR, LPCWSTR, UINT);
+Console console;
 
-// remember memory address of the original MessageBoxW routine
-TrueMessageBox trueMessageBox = MessageBoxW;
+/*--------------------------------------------------
+		User32.dll MessageBox hook
+----------------------------------------------------*/
+typedef int(WINAPI* TrueMessageBox)(HWND, LPCTSTR, LPCTSTR, UINT);
 
-BOOL WINAPI hookedMessageBox(HWND hWnd, LPCWSTR lpText, LPCWSTR lpCaption, UINT uType)
+TrueMessageBox trueMessageBox = NULL;
+
+BOOL WINAPI MessageBoxHook(HWND hWnd, LPCTSTR lpText, LPCTSTR lpCaption, UINT uType)
 {
-	//LPCTSTR lpTextChanged = L"This messagebox is also changed";
 	LPCTSTR lpCaptionChanged = L"Hooked MessageBox";
 	return trueMessageBox(hWnd, lpText, lpCaptionChanged, uType);
 }
@@ -39,14 +43,12 @@ PDWORD get_export_offset_address(uintptr_t module_base_address, const char* func
 	PWORD ordinal_array = reinterpret_cast<PWORD>(module_base_address + export_directory->AddressOfNameOrdinals); //word because ordinal table has 16 bit entries
 	PDWORD function_offset_array = reinterpret_cast<PDWORD>(module_base_address + export_directory->AddressOfFunctions);
 
-	std::ofstream MyFile("C://Users//Bente//Desktop//logging.txt");
-
 	// Cycle through all function pointers
 	for (int i=0; i < export_directory->NumberOfFunctions; ++i)
 	{
 		const char* current_name = reinterpret_cast<const char*>(module_base_address + name_offset_array[i]);
 
-		MyFile << current_name << std::endl;
+		fprintf(console.stream, "%s \n", current_name);
 
 		if (_stricmp(function_name, current_name))
 			continue;
@@ -54,8 +56,8 @@ PDWORD get_export_offset_address(uintptr_t module_base_address, const char* func
 		PWORD ordinal_base = reinterpret_cast<PWORD>(module_base_address + export_directory->Base);
 		WORD indexEAT = ordinal_array[i] - *ordinal_base; //biased ordinal? => have to subtract ordinal base?
 
-		MyFile << indexEAT << std::endl;
-		MyFile << *ordinal_base << std::endl;
+		fprintf(console.stream, "%d \n", indexEAT);
+		fprintf(console.stream, "%d \n", *ordinal_base);
 
 		// We want to get the address of the DWORD, so we use pointer arithmetics instead of function_offset_array[current_ordinal]
 		PDWORD current_function_offset = function_offset_array + indexEAT;
@@ -64,9 +66,6 @@ PDWORD get_export_offset_address(uintptr_t module_base_address, const char* func
 	}
 
 	return nullptr;
-
-	// Close the file
-	MyFile.close();
 }
 
 
@@ -82,7 +81,7 @@ DWORD WINAPI installEATHook(PVOID base) {
 		return FALSE;
 	}
 
-	DWORD hook_offset = (uintptr_t)&hookedMessageBox - module_base_address;
+	DWORD hook_offset = (uintptr_t)&MessageBoxHook - module_base_address;
 
 	DWORD old_protection{};
 	VirtualProtect(messageBoxW_offset_address, sizeof(DWORD), PAGE_READWRITE, &old_protection);
@@ -102,8 +101,14 @@ BOOL APIENTRY DllMain( HMODULE hModule, DWORD  ul_reason_for_call, LPVOID lpRese
 {
     switch (ul_reason_for_call)
     {
-    case DLL_PROCESS_ATTACH:
-        CreateThread(nullptr, NULL, installEATHook, hModule, NULL, nullptr); break;
+	case DLL_PROCESS_ATTACH: {
+		if (!console.open()) {
+			// Indicate DLL loading failed
+			return FALSE;
+		}
+		CreateThread(nullptr, NULL, installEATHook, hModule, NULL, nullptr); break;
+	}
+        
     case DLL_THREAD_ATTACH:
     case DLL_THREAD_DETACH:
     case DLL_PROCESS_DETACH:
