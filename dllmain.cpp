@@ -1,6 +1,3 @@
-// dllmain.cpp : Defines the entry point for the DLL application.
-#include "pch.h"
-
 //      EAT Redirection - The EAT, or Export Address Table is similar to the
 //		IAT.  Except in the opposite direction.  When a module exports a function 
 //		so that it can be used by other modules, it stores the address of  
