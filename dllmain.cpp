@@ -32,7 +32,7 @@ BOOL WINAPI MessageBoxHook(HWND hWnd, LPCTSTR lpText, LPCTSTR lpCaption, UINT uT
 }
 
 // Parse the PE header to find the address of the Export Directory Table
-PIMAGE_EXPORT_DIRECTORY get_export_directory(DWORD base)
+PIMAGE_EXPORT_DIRECTORY get_export_directory(UINT_PTR base)
 {	
 	PIMAGE_DOS_HEADER dosHeader = reinterpret_cast<PIMAGE_DOS_HEADER>(base);
 	PIMAGE_NT_HEADERS ntHeader = reinterpret_cast<PIMAGE_NT_HEADERS>(base + dosHeader->e_lfanew);
@@ -43,7 +43,7 @@ PIMAGE_EXPORT_DIRECTORY get_export_directory(DWORD base)
 }
 
 // Find the correct function in the Export Name Pointer Table
-DWORD get_name_pointer_table_index(DWORD base, PIMAGE_EXPORT_DIRECTORY export_directory, const char* function_name)
+DWORD get_name_pointer_table_index(UINT_PTR base, PIMAGE_EXPORT_DIRECTORY export_directory, const char* function_name)
 {
 	// Get addresses of the arrays
 	PDWORD name_offset_array = reinterpret_cast<PDWORD>(base + export_directory->AddressOfNames);
@@ -66,7 +66,7 @@ DWORD get_name_pointer_table_index(DWORD base, PIMAGE_EXPORT_DIRECTORY export_di
 
 // Use the index in the Export Ordinal Table (forms a parallel array with the Export Name Pointer Table
 // Add the Export Address Table RVA to find the address of the exported function
-PDWORD get_export_offset_address(DWORD base, PIMAGE_EXPORT_DIRECTORY export_directory, DWORD index)
+PDWORD get_export_offset_address(UINT_PTR base, PIMAGE_EXPORT_DIRECTORY export_directory, DWORD index)
 {
 	PWORD ordinal_array = reinterpret_cast<PWORD>(base + export_directory->AddressOfNameOrdinals); //word because ordinal table has 16 bit entries
 	
@@ -87,21 +87,21 @@ PDWORD get_export_offset_address(DWORD base, PIMAGE_EXPORT_DIRECTORY export_dire
 }
 
 // Install the hook (overwrite the pointer in the Export Address Table)
-void overwriteEAT(DWORD base, PDWORD offset, DWORD pointer) {
+void overwriteEAT(UINT_PTR base, PDWORD offset, DWORD pointer) {
 	// Change the protection so we can overwrite the pointer, store the old protection
 	DWORD old_protection{};
-	VirtualProtect(offset, sizeof(DWORD), PAGE_READWRITE, &old_protection);
+	VirtualProtect(offset, sizeof(UINT_PTR), PAGE_READWRITE, &old_protection);
 
 	// Overwrite the address with a pointer to another function
 	*offset = pointer;
 
 	// Restore the old protection
-	VirtualProtect(offset, sizeof(DWORD), old_protection, &old_protection);
+	VirtualProtect(offset, sizeof(UINT_PTR), old_protection, &old_protection);
 }
 
 // Storing these values to be able to use them in the attach and detach
 HMODULE h_module = NULL;
-DWORD base = 0;
+UINT_PTR base = 0; //Using UINT_PTR because it scales to the size of a pointer for both 32-bit and 64-bit Windows 
 PDWORD offset_address = nullptr;
 
 // Testing the hook by retrieving the address of the function with GetProcAddress
@@ -138,7 +138,7 @@ BOOL APIENTRY DllMain( HMODULE hModule, DWORD  ul_reason_for_call, LPVOID lpRese
 
 		// module handle == base address of the module
 		// but we need to cast it to do correct pointer arithmetic
-		base = (DWORD)h_module;
+		base = (UINT_PTR)h_module;
 
 		PIMAGE_EXPORT_DIRECTORY p_export_dir = get_export_directory(base);
 		fprintf(console.stream, "Found address %p for Export Directory Table of module %s\n", p_export_dir, module_name);
