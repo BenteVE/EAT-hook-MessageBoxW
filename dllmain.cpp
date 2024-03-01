@@ -18,6 +18,9 @@ Console console;
 /*--------------------------------------------------
 		User32.dll MessageBox hook
 ----------------------------------------------------*/
+LPCSTR module_name = "user32.dll";
+LPCSTR function_name = "MessageBoxW";
+
 typedef int(WINAPI* TrueMessageBox)(HWND, LPCTSTR, LPCTSTR, UINT);
 
 TrueMessageBox trueMessageBox = MessageBoxW;
@@ -96,12 +99,24 @@ void overwriteEAT(DWORD base, PDWORD offset, DWORD pointer) {
 	VirtualProtect(offset, sizeof(DWORD), old_protection, &old_protection);
 }
 
-LPCSTR module_name = "user32.dll";
-LPCSTR function_name = "MessageBoxW";
-
+// Storing these values to be able to use them in the attach and detach
 HMODULE h_module = NULL;
 DWORD base = 0;
 PDWORD offset_address = nullptr;
+
+// Testing the hook by retrieving the address of the function with GetProcAddress
+void test_hook() {
+	FARPROC address = GetProcAddress(h_module, function_name);
+	fprintf(console.stream, "Hook function is located at address %p\n", &MessageBoxHook);
+	fprintf(console.stream, "GetProcAddress found address %p for function %s\n", address, function_name);
+
+	if (address != nullptr) {
+		// Use the address to open a messagebox
+		// If the hook is active, the text will be changed
+		TrueMessageBox messageBox = reinterpret_cast<TrueMessageBox>(address);
+		messageBox(NULL, L"Regular text", L"Regular caption", MB_OK);
+	}
+}
 
 BOOL APIENTRY DllMain( HMODULE hModule, DWORD  ul_reason_for_call, LPVOID lpReserved)
 {
@@ -147,18 +162,8 @@ BOOL APIENTRY DllMain( HMODULE hModule, DWORD  ul_reason_for_call, LPVOID lpRese
 
 		// todo: test that install was successfull by using GetProcAddress
 		FARPROC address = GetProcAddress(h_module, function_name);
-		fprintf(console.stream, "Hook function is located at address %p\n", &MessageBoxHook);
-		fprintf(console.stream, "GetProcAddress found address %p for function %s\n", address, function_name);
 		
-		// EAT will only affect modules loaded after the redirection has been made.
-		// Using the 
-
-		if (address != nullptr) {
-			// use the address to open a messagebox to prove it points to our hook
-			TrueMessageBox messageBox = reinterpret_cast<TrueMessageBox>(address);
-			messageBox(NULL, L"EAT hook test", L"EAT hook test", MB_OK);
-
-		}
+		test_hook();
 
 		return TRUE;
 	}
@@ -169,16 +174,8 @@ BOOL APIENTRY DllMain( HMODULE hModule, DWORD  ul_reason_for_call, LPVOID lpRese
 	case DLL_PROCESS_DETACH: {
 		// overwrite the address with the original address (unhook)
 		overwriteEAT(base, offset_address, (DWORD)trueMessageBox-base); 
-		FARPROC address = GetProcAddress(h_module, function_name);
-		fprintf(console.stream, "Hook function is located at address %p\n", &MessageBoxHook);
-		fprintf(console.stream, "GetProcAddress found address %p for function %s\n", address, function_name);
-
-		if (address != nullptr) {
-			// use the address to open a messagebox to prove it points to our hook
-			TrueMessageBox messageBox = reinterpret_cast<TrueMessageBox>(address);
-			messageBox(NULL, L"EAT hook test", L"EAT hook test", MB_OK);
-
-		}
+		test_hook();
+		
 		return TRUE;
 	}
 
