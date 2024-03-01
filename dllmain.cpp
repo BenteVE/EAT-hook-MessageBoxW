@@ -76,7 +76,10 @@ void overwriteEAT(PDWORD hook_address, DWORD function_address) {
 	VirtualProtect(hook_address, sizeof(DWORD), PAGE_READWRITE, &old_protection);
 
 	// Overwrite the address with a pointer to another function
+	fprintf(console.stream, "\nOverwriting address: %p\n", hook_address);
+	fprintf(console.stream, "Content before overwrite: %p\n", *hook_address);
 	*hook_address = function_address;
+	fprintf(console.stream, "Content after overwrite: %p\n", *hook_address);
 
 	// Restore the old protection
 	VirtualProtect(hook_address, sizeof(DWORD), old_protection, &old_protection);
@@ -89,12 +92,8 @@ PDWORD hook_address = nullptr; // The entries in the Export Address Table are 4 
 
 // Testing the hook by retrieving the address of the function with GetProcAddress
 void test_hook() {
-	fprintf(console.stream, "\nTesting hook using GetProcAddress():\n");
-
 	FARPROC address = GetProcAddress(h_module, function_name);
-	fprintf(console.stream, "Using GetProcAddress: %p\n", address);
-	
-	fprintf(console.stream, "Address hook function: %p\n", &MessageBoxHook);
+	fprintf(console.stream, "\nTesting with GetProcAddress: %p\n", address);
 
 	// Using the address retrieved by GetProcAddress to create a MessageBox
 	// (If the hook is active, the text will be changed)
@@ -161,12 +160,19 @@ BOOL APIENTRY DllMain( HMODULE hModule, DWORD  ul_reason_for_call, LPVOID lpRese
 		// => we overwrite the value we find with the 
 		PDWORD export_address_table = reinterpret_cast<PDWORD>(base + p_export_dir->AddressOfFunctions);
 		hook_address = export_address_table + unbiased_ordinal;
-		fprintf(console.stream, "Hook address: %p\n", hook_address);
+
 		
 		// The Export Address Table contains 4 byte offsets to the exported functions
 		// the offsets are relative to the base address of the module
 		// => we need to calculate the offset to our hook function
 		DWORD hook_function_offset = (DWORD)((UINT_PTR)&MessageBoxHook - base);
+
+
+		fprintf(console.stream, "\n");
+		fprintf(console.stream, "True fn:   %p\n", (UINT_PTR)trueMessageBox);
+		fprintf(console.stream, "Hook fn:   %p\n", (UINT_PTR)&MessageBoxHook);
+		fprintf(console.stream, "Base:      %p\n", base);
+		fprintf(console.stream, "Hook-Base: %p\n", hook_function_offset);
 
 		// Overwrite the value
 		overwriteEAT(hook_address, hook_function_offset);
@@ -182,6 +188,7 @@ BOOL APIENTRY DllMain( HMODULE hModule, DWORD  ul_reason_for_call, LPVOID lpRese
 	case DLL_THREAD_DETACH: break;
 	case DLL_PROCESS_DETACH: {
 		// overwrite the address with the original address (unhook)
+		fprintf(console.stream, "\nUnhooking...\n");
 		DWORD true_function_offset = (DWORD)((UINT_PTR)trueMessageBox - base);
 		overwriteEAT(hook_address, true_function_offset);
 		test_hook();
