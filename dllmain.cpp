@@ -70,22 +70,22 @@ DWORD get_function_index(UINT_PTR base, PIMAGE_EXPORT_DIRECTORY export_directory
 }
 
 // Install the hook (overwrite the pointer in the Export Address Table)
-void overwriteEAT(PDWORD hook_address, DWORD function_address) {
+void overwriteEAT(PUINT_PTR hook_address, UINT_PTR function_address) {
 	// Change the protection so we can overwrite the pointer, store the old protection
 	DWORD old_protection{};
-	VirtualProtect(hook_address, sizeof(DWORD), PAGE_READWRITE, &old_protection);
+	VirtualProtect(hook_address, sizeof(UINT_PTR), PAGE_READWRITE, &old_protection);
 
 	// Overwrite the address with a pointer to another function
 	*hook_address = function_address;
 
 	// Restore the old protection
-	VirtualProtect(hook_address, sizeof(DWORD), old_protection, &old_protection);
+	VirtualProtect(hook_address, sizeof(UINT_PTR), old_protection, &old_protection);
 }
 
 // Storing these values to be able to use them in the attach and detach
 HMODULE h_module = NULL;
-UINT_PTR base = 0; //Using UINT_PTR because it scales to the size of a pointer for both 32-bit and 64-bit Windows 
-PDWORD hook_address = nullptr; // The entries in the Export Address Table are 4 bytes long
+UINT_PTR base = 0; // Using UINT_PTR because it scales to the size of a pointer for both 32-bit and 64-bit Windows 
+PUINT_PTR hook_address = 0; // The entries in the Export Address Table are 4 bytes long???
 
 // Testing the hook by retrieving the address of the function with GetProcAddress
 void test_hook() {
@@ -158,15 +158,16 @@ BOOL APIENTRY DllMain( HMODULE hModule, DWORD  ul_reason_for_call, LPVOID lpRese
 		
 
 		// The unbiased ordinal can be used as an index into the Export Address Table
-		// => we overwrite the value we find with the 
-		PDWORD export_address_table = reinterpret_cast<PDWORD>(base + p_export_dir->AddressOfFunctions);
+		PUINT_PTR export_address_table = reinterpret_cast<PUINT_PTR>(base + p_export_dir->AddressOfFunctions);
 		hook_address = export_address_table + unbiased_ordinal;
 		fprintf(console.stream, "Hook address: %p\n", hook_address);
 		
-		// The Export Address Table contains 4 byte offsets to the exported functions
+		// The Export Address Table contains offsets to the exported functions
 		// the offsets are relative to the base address of the module
 		// => we need to calculate the offset to our hook function
-		DWORD hook_function_offset = (DWORD)((UINT_PTR)&MessageBoxHook - base);
+		fprintf(console.stream, "Hook function pointer: %p\n", &MessageBoxHook);
+		UINT_PTR hook_function_offset = (UINT_PTR)&MessageBoxHook - base;
+		
 
 		// Overwrite the value
 		overwriteEAT(hook_address, hook_function_offset);
