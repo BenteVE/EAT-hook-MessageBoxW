@@ -166,6 +166,15 @@ BOOL APIENTRY DllMain( HMODULE hModule, DWORD  ul_reason_for_call, LPVOID lpRese
 		// the offsets are relative to the base address of the module
 		// => we need to calculate the offset to our hook function
 		DWORD hook_function_offset = (DWORD)((UINT_PTR)&MessageBoxHook - base);
+		// Note: In testing, the address of the hook was always lower than the base address of the module
+		// => the calculation of the offset then causes an underflow
+		// => we need to also cause an overflow when the base gets added to the offset
+		// This is only possible in 32 bit because the offset and base have the same bit size
+		if (base + hook_function_offset != (UINT_PTR)&MessageBoxHook) {
+			fprintf(console.stream, "Problem with under/overflow for offset.\n");
+			fprintf(console.stream, "Setting pointer to NULL instead, this blocks function execution.\n");
+			hook_function_offset = 0;
+		}
 
 
 		fprintf(console.stream, "\n");
