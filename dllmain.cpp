@@ -1,13 +1,3 @@
-//      EAT Redirection - The EAT, or Export Address Table is similar to the
-//		IAT.  Except in the opposite direction.  When a module exports a function 
-//		so that it can be used by other modules, it stores the address of
-//		that function in it's EAT.  EAT redirection overwrites that address 
-//		with the offset of your hook.  EAT redirection will not affect any 
-//		currently loaded modules.  It will only affect modules loaded after the 
-//		redirection	has been made.  It will also affect subsequent calls to 
-//		GetProcAddress(), as they will return the address of your hook instead of 
-//		the real function. 
-
 #include <iostream>
 #include <Windows.h>
 #include <winternl.h>
@@ -186,7 +176,11 @@ BOOL APIENTRY DllMain( HMODULE hModule, DWORD  ul_reason_for_call, LPVOID lpRese
 		// Overwrite the value
 		overwriteEAT(hook_address, hook_function_offset);
 
-		// test that install was successfull by using GetProcAddress
+		// Note: when a module is loaded in the memory, 
+		// - the symbols from the EAT of the module will be loaded in the IAT of the process
+		// - the process will then check the IAT whenever it needs access to that symbol
+		// This means the EAT hook will have no effect when the process uses implicit linking
+		// => we use GetProcAddress to test the hook, this function does check the EAT!
 		test_hook();
 
 		return TRUE;
